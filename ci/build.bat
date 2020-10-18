@@ -14,7 +14,7 @@ popd
 cmake -G "Visual Studio 16 2019" -A Win32 -B build_x86 -S . -DCMAKE_INSTALL_PREFIX=dist
 cmake --build build_x86 --config Release
 cmake --install build_x86 --config Release
-cmake -G "Visual Studio 16 2019" -A x64 -B build_x86 -S . -DCMAKE_INSTALL_PREFIX=dist
+cmake -G "Visual Studio 16 2019" -A x64 -B build_x64 -S . -DCMAKE_INSTALL_PREFIX=dist
 cmake --build build_x64 --config Release
 cmake --install build_x64 --config Release
 

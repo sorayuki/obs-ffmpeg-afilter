@@ -60,6 +60,9 @@ target_link_libraries(obs-ffmpeg-afilter PRIVATE
     avutil
     avfilter
 )
+target_link_options(obs-ffmpeg-afilter PRIVATE
+    -SAFESEH:NO
+)
 
 install(TARGETS obs-ffmpeg-afilter RUNTIME
     DESTINATION obs-plugins/${PLAT}
