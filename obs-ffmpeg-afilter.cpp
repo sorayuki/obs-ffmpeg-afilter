@@ -945,6 +945,11 @@ bool register_ffmepg_audio_filter()
 
 bool obs_module_load()
 {
+	if (avfilter_version() != LIBAVFILTER_VERSION_INT) {
+		blog(LOG_ERROR, "%s", "[obs-ffmpeg-afilter] required " LIBAVFILTER_IDENT);
+		return false;
+	}
+
 	auto log_callback = [](void *ud, int level, const char *fmt,
 			       va_list args) { blogva(LOG_INFO, fmt, args); };
 	av_log_set_callback(log_callback);
