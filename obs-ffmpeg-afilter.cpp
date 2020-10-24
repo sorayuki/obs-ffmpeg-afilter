@@ -2,15 +2,14 @@
 #include "obs-module.h"
 
 #include <map>
+#include <set>
 #include <list>
 #include <mutex>
 #include <array>
 #include <string>
 #include <vector>
 #include <memory>
-#include <memory>
 #include <numeric>
-#include <iterator>
 #include <algorithm>
 #include <functional>
 
@@ -34,6 +33,11 @@ MODULE_EXPORT const char *obs_module_description(void)
 }
 
 using namespace std;
+
+set<string> g_filter_black_list_{
+	"abench",     "afade",         "afifo",         "aloop",
+	"ametadata",  "aperms",        "areverse",      "anull",
+	"replaygain", "silencedetect", "silenceremove", "volumedetect"};
 
 template<class T> class IAudioFilter {
 protected:
@@ -290,6 +294,9 @@ bool FFAFilterCollection::Init()
 	while ((flt = avfilter_next(flt)) != NULL)
 #endif
 	{
+		if (g_filter_black_list_.find(flt->name) !=
+		    g_filter_black_list_.end())
+			continue;
 		if (avfilter_pad_count(flt->inputs) != 1)
 			continue;
 		if (avfilter_pad_count(flt->outputs) != 1)
@@ -767,7 +774,7 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 	if (!graph_)
 		return result(audio);
 
-    // ====== feed data into graph
+	// ====== feed data into graph
 	fin = av_frame_alloc();
 	fin->sample_rate = oai_.samples_per_sec;
 	fin->format = AV_SAMPLE_FMT_FLTP;
@@ -775,7 +782,7 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 	fin->nb_samples = audio->frames;
 	fin->pts = audio->timestamp;
 	fin->linesize[0] = audio->frames * sizeof(float);
-        fin->channels = av_get_channel_layout_nb_channels(fin->channel_layout);
+	fin->channels = av_get_channel_layout_nb_channels(fin->channel_layout);
 	for (int i = 0; i < fin->channels; ++i)
 		fin->data[i] = audio->data[i];
 
@@ -785,42 +792,28 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 	if (end)
 		av_buffersrc_add_frame_flags(inputFilter_, nullptr, 0);
 
-    // ====== retrieve data from graph
+	// ====== retrieve data from graph
 	fout = av_frame_alloc();
-	bool is_first_out = true;
-	audio->frames = 0;
-	for (;;) {
-		int outerr = av_buffersink_get_frame(outputFilter_, fout);
-		if (outerr == AVERROR(EAGAIN))
-			break;
-		if (outerr == AVERROR_EOF)
-			break;
+	int outerr = av_buffersink_get_frame(outputFilter_, fout);
+	if (outerr == AVERROR(EAGAIN))
+		return result(nullptr);
+	else if (end && outerr == AVERROR_EOF)
+		return result(nullptr);
+	else if (outerr < 0)
+		return result(audio);
 
-		for (int i = 0; i < fout->channels; ++i) {
-			if (is_first_out) {
-				frame_datas[i].resize(fout->nb_samples);
-				copy_n((float *)fout->extended_data[i],
-				       fout->nb_samples, frame_datas[i].data());
-			} else {
-				copy_n((float *)fout->extended_data[i],
-				       fout->nb_samples,
-				       back_inserter(frame_datas[i]));
-			}
-			audio->data[i] = (uint8_t *)frame_datas[i].data();
-		}
-
-                if (is_first_out) {
-			audio->timestamp = av_rescale_q(
-				fout->pts,
-				av_buffersink_get_time_base(outputFilter_),
-				AVRational{1, 1000000000});
-		}
-
-                audio->frames += fout->nb_samples;
-                is_first_out = false;
+	for (int i = 0; i < fout->channels; ++i) {
+		frame_datas[i].resize(fout->nb_samples);
+		copy_n((float *)fout->extended_data[i], fout->nb_samples,
+		       frame_datas[i].data());
+		audio->data[i] = (uint8_t *)frame_datas[i].data();
 	}
+	audio->timestamp = av_rescale_q(
+		fout->pts, av_buffersink_get_time_base(outputFilter_),
+		AVRational{1, 1000000000});
+	audio->frames = fout->nb_samples;
 
-        return result(audio);
+	return result(audio);
 }
 
 bool FFAFilter::obs_properties_add_avfilter(obs_properties *props,
@@ -881,7 +874,7 @@ obs_audio_data *FFAFilter::filterAudio(obs_audio_data *audio)
 	if (!filter_graph_)
 		return audio;
 
-        last_audio_data_ = *audio;
+	last_audio_data_ = *audio;
 
 	auto result = filter_graph_->filterAudio(
 		&last_audio_data_, last_audio_data_bufs_, !!next_filter_graph_);
@@ -938,19 +931,30 @@ obs_properties_t *FFAFilter::properties()
 }
 
 extern "C" {
-bool obs_module_load()
+bool register_ffmepg_audio_filter()
 {
 #if LIBAVFILTER_VERSION_MAJOR < 7
 	avfilter_register_all();
 #endif
+	if (FFAFilterCollection::Get().Init()) {
+		RegisterFilter<FFAFilter>();
+		return true;
+	} else
+		return false;
+}
+
+bool obs_module_load()
+{
 	auto log_callback = [](void *ud, int level, const char *fmt,
 			       va_list args) { blogva(LOG_INFO, fmt, args); };
 	av_log_set_callback(log_callback);
 
-	if (FFAFilterCollection::Get().Init())
-		RegisterFilter<FFAFilter>();
-	return true;
+	if (register_ffmepg_audio_filter())
+		return true;
+	else
+		return false;
 }
 
 void obs_module_unload() {}
+
 };
