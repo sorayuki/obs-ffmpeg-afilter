@@ -5,10 +5,7 @@ name: CI
 # Controls when the action will run. Triggers the workflow on push or pull request
 # events but only for the master branch
 on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+  workflow_dispatch:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -23,7 +20,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: build
-        run: ci\build.bat
+        run: dotnet run --project cibuild
       
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v2.2.0
