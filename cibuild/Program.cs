@@ -35,7 +35,7 @@ class Program {
             await DownloadFile($"https://cdn-fastly.obsproject.com/downloads/OBS-Studio-{obsver}-Full-{arch}.zip", $"obs-bin-{arch}.zip");
             Directory.CreateDirectory($"obs-bin-{arch}");
             ZipFile.ExtractToDirectory($"obs-bin-{arch}.zip", $"obs-bin-{arch}");
-            await DownloadFile($"https://github.com/obsproject/obs-deps/releases/download/win-{depver}/windows-deps-{depver}-{arch}.zip", $"obs-dep-{arch}.zip");
+            await DownloadFile($"https://github.com/obsproject/obs-deps/releases/download/{depver}/windows-deps-{depver}-{arch}.zip", $"obs-dep-{arch}.zip");
             Directory.CreateDirectory($"deps\\{arch}");
             ZipFile.ExtractToDirectory($"obs-dep-{arch}.zip", $"deps\\{arch}");
             await Exec("cmake.exe", $"-G \"Visual Studio 17 2022\" -A {(arch=="x86"?"Win32":"x64")} -B build_{arch} -S . -DCMAKE_INSTALL_PREFIX=dist");
