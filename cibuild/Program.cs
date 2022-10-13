@@ -26,8 +26,8 @@ class Program {
         }
     }
     public static async Task Main(string[] args) {
-        var obsver = "27.2.4";
-        var depver = "2022-03-16";
+        var obsver = "28.0.3";
+        var depver = "2022-08-02";
         await DownloadFile($"https://github.com/obsproject/obs-studio/archive/refs/tags/{obsver}.zip", "obs-src.zip");
         ZipFile.ExtractToDirectory($"obs-src.zip", $"obs-src-tmp");
         Directory.Move(Directory.EnumerateDirectories("obs-src-tmp").ToArray()[0], "obs-src");
