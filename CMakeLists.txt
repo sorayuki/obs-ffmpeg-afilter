@@ -1,59 +1,91 @@
-cmake_minimum_required(VERSION 3.16)
-project(obs-ffmpeg-afilter VERSION 0.2.0.0)
+cmake_minimum_required(VERSION 3.16...3.21)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# Change obs-plugintemplate to your plugin's name in a machine-readable format (e.g.:
+# obs-myawesomeplugin) and set
+project(obs-ffmpeg-afilters VERSION 0.1.0.0)
+add_library(${CMAKE_PROJECT_NAME} MODULE)
 
-if (CMAKE_SIZEOF_VOID_P EQUAL 4)
-    set(PLAT "32bit")
-    set(LINK_PLAT "x86")
-    set(DEP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/x86)
-elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(PLAT "64bit")
-    set(LINK_PLAT "x64")
-    set(DEP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/deps/x64)
-else ()
-    message(FATAL_ERROR "?")
-endif ()
+# Replace `Your Name Here` with the name (yours or your organization's) you want to see as the
+# author of the plugin (in the plugin's metadata itself and in the installers)
+set(PLUGIN_AUTHOR "sorayuki")
 
-if (${CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT})
-    set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/obs-bin" CACHE PATH "" FORCE)
+# Replace `com.example.obs-plugin-template` with a unique Bundle ID for macOS releases (used both in
+# the installer and when submitting the installer for notarization)
+set(MACOS_BUNDLEID "com.sorayuki.${CMAKE_PROJECT_NAME}")
+
+# Replace `me@contoso.com` with the maintainer email address you want to put in Linux packages
+# set(LINUX_MAINTAINER_EMAIL "me@mymailhost.com")
+
+# Add your custom source files here - header files are optional and only required for visibility
+# e.g. in Xcode or Visual Studio
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE 
+	./src/obs-ffmpeg-afilter.cpp
+)
+
+find_library(AVFILTER avfilter)
+find_library(AVUTIL avutil)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ${AVFILTER} ${AVUTIL})
+
+# Import libobs as main plugin dependency
+find_package(libobs REQUIRED)
+include(cmake/ObsPluginHelpers.cmake)
+
+find_package(obs-frontend-api REQUIRED)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
+
+find_qt(COMPONENTS Widgets Core)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE Qt::Core Qt::Widgets)
+set_target_properties(
+  ${CMAKE_PROJECT_NAME}
+  PROPERTIES AUTOMOC ON
+             AUTOUIC ON
+             AUTORCC ON)
+
+configure_file(src/plugin-macros.h.in ${CMAKE_SOURCE_DIR}/src/plugin-macros.generated.h)
+
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-macros.generated.h)
+
+# /!\ TAKE NOTE: No need to edit things past this point /!\
+
+# --- Platform-independent build settings ---
+
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
+
+# --- End of section ---
+
+# --- Windows-specific build settings and tasks ---
+if(OS_WINDOWS)
+  configure_file(cmake/bundle/windows/installer-Windows.iss.in
+                 ${CMAKE_BINARY_DIR}/installer-Windows.generated.iss)
+
+  configure_file(cmake/bundle/windows/resource.rc.in ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.rc)
+  target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.rc)
+
+  if(MSVC)
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W4)
+  endif()
+  # --- End of section ---
+
+  # -- macOS specific build settings and tasks --
+elseif(OS_MACOS)
+  configure_file(cmake/bundle/macos/installer-macos.pkgproj.in
+                 ${CMAKE_BINARY_DIR}/installer-macos.generated.pkgproj)
+
+  set(MACOSX_PLUGIN_GUI_IDENTIFIER "${MACOS_BUNDLEID}")
+  set(MACOSX_PLUGIN_BUNDLE_VERSION "${CMAKE_PROJECT_VERSION}")
+  set(MACOSX_PLUGIN_SHORT_VERSION_STRING "1")
+
+  target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall)
+  # --- End of section ---
+
+  # --- Linux-specific build settings and tasks ---
+else()
+  target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall)
 endif()
+# --- End of section ---
 
-# build obs lib
-execute_process(COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tools/pexports.exe"
-    "${CMAKE_CURRENT_SOURCE_DIR}/obs-bin-${LINK_PLAT}/bin/${PLAT}/obs.dll"
-    OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/libobs.def"
-    COMMAND_ECHO STDOUT
-)
-execute_process(COMMAND ${CMAKE_LINKER}
-    "/lib" "/MACHINE:${LINK_PLAT}"
-    "/def:${CMAKE_CURRENT_BINARY_DIR}/libobs.def"
-    "/out:${CMAKE_CURRENT_BINARY_DIR}/libobs.lib")
-
-configure_file(version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
-
-add_library(obs-ffmpeg-afilter SHARED
-    obs-ffmpeg-afilter.cpp
-    ${CMAKE_CURRENT_BINARY_DIR}/version.rc
-)
-target_include_directories(obs-ffmpeg-afilter PRIVATE
-    obs-src/libobs
-    ${DEP_DIR}/include
-)
-target_link_directories(obs-ffmpeg-afilter PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}
-    ${DEP_DIR}/lib
-)
-target_link_libraries(obs-ffmpeg-afilter PRIVATE
-    libobs
-    avutil
-    avfilter
-)
-target_link_options(obs-ffmpeg-afilter PRIVATE
-    -SAFESEH:NO
-)
-
-install(TARGETS obs-ffmpeg-afilter RUNTIME
-    DESTINATION obs-plugins/${PLAT}
-)
-
+setup_plugin_target(${CMAKE_PROJECT_NAME})

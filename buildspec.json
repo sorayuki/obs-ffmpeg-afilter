@@ -1,0 +1,52 @@
+{
+    "dependencies": {
+        "obs-studio": {
+            "version": "29.0.2",
+            "repository": "https://github.com/obsproject/obs-studio.git",
+            "branch": "master",
+            "hash": "0fb8bb4b1e18ee1c870c48d35ab5b598af3b59e9"
+        },
+        "prebuilt": {
+            "version": "2022-11-21",
+            "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+            "label": "Pre-built obs-deps",
+            "hashes": {
+                "macos-x86_64": "ed0a145e88496f8975da14a07939dbe5633e60510aada34509a4aef64a66e438",
+                "macos-arm64": "f397dc524e5ee7f85684f0b9661c45957446e28d166fcd6dfacf895c9d4d2521",
+                "macos-universal": "a1f27fbfe1452a9331d7d468aaa38e67b71d1a89a2f049e6061308d98ad3e630"
+            }
+        },
+        "qt6": {
+            "version": "2022-11-21",
+            "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+            "label": "Pre-built Qt6",
+            "hashes": {
+                "macos-x86_64": "c5ed7bc9f6e802910ec539066bcf0a8d64100fafce568071f264c88c22c5859b",
+                "macos-arm64": "1ce472fd1e28f947456b72b1d7ab929d6e93cb774c2928e22eca9bb751b12ccf",
+                "macos-universal": "873f7c9c9f7fcee740a79c075b32a505c932c816d928807fa16f3439c610fbfd"
+            }
+        }
+    },
+    "platformConfig": {
+        "macos-x86_64": {
+            "qtVersion": 6,
+            "deploymentTarget": "10.15"
+        },
+        "macos-arm64": {
+            "qtVersion": 6,
+            "deploymentTarget": "11.0"
+        },
+        "macos-universal": {
+            "qtVersion": 6,
+            "deploymentTarget": "10.15"
+        },
+        "linux-x86_64": {
+            "qtVersion": 6
+        },
+        "linux-aarch64": {
+            "qtVersion": 6
+        }
+    },
+    "name": "obs-ffmpeg-afilters",
+    "version": "0.1.0.0"
+}
