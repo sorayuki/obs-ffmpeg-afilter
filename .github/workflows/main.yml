@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 env:
-  PLUGIN_NAME: 'obs-multi-rtmp'
+  PLUGIN_NAME: 'obs-ffmpeg-afilter'
 
 jobs:
   #clang_check:
@@ -330,28 +330,28 @@ jobs:
           name: ${{ env.PLUGIN_NAME }}-windows-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}
           path: ${{ github.workspace }}/plugin/release/${{ env.PLUGIN_NAME }}-*.zip
 
-#      - name: Package Plugin Installer
-#        if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
-#        uses: ./plugin/.github/actions/package-plugin
-#        with:
-#          workingDirectory: ${{ github.workspace }}/plugin
-#          target: ${{ matrix.arch }}
-#          config: RelWithDebInfo
-#          createInstaller: true
-#
-#      - name: Upload Installer Artifact
-#        if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
-#        uses: actions/upload-artifact@v3
-#        with:
-#          name: ${{ env.PLUGIN_NAME }}-windows-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}-installer
-#          path: ${{ github.workspace }}/plugin/release/${{ env.PLUGIN_NAME }}-*.exe
+      - name: Package Plugin Installer
+        if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
+        uses: ./plugin/.github/actions/package-plugin
+        with:
+          workingDirectory: ${{ github.workspace }}/plugin
+          target: ${{ matrix.arch }}
+          config: RelWithDebInfo
+          createInstaller: false
+
+      - name: Upload Installer Artifact
+        if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.PLUGIN_NAME }}-windows-${{ matrix.arch }}-${{ steps.setup.outputs.commitHash }}-installer
+          path: ${{ github.workspace }}/plugin/release/${{ env.PLUGIN_NAME }}-*.exe
 
   make-release:
     name: 03 - Create and upload release
     runs-on: ubuntu-22.04
     if: github.event_name == 'workflow_dispatch' && contains(github.ref, 'refs/tags/')
     # needs: [macos_build, linux_build, windows_build]
-    needs: [macos_build, windows_build]
+    needs: [windows_build]
     defaults:
       run:
         shell: bash
