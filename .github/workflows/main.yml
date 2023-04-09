@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 env:
-  PLUGIN_NAME: 'obs-ffmpeg-afilter'
+  PLUGIN_NAME: 'obs-ffmpeg-afilters'
 
 jobs:
   #clang_check:
