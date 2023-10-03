@@ -56,7 +56,8 @@
         "CMAKE_SYSTEM_VERSION": "10.0.18363.657",
         "ENABLE_FRONTEND_API": false,
         "ENABLE_QT": false,
-        "CMAKE_COMPILE_WARNING_AS_ERROR": false
+        "CMAKE_COMPILE_WARNING_AS_ERROR": false,
+        "CMAKE_INSTALL_PREFIX": "rundir"
       }
     },
     {
