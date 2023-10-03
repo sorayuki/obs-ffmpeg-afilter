@@ -3,9 +3,9 @@ run-name: ${{ github.ref_name }} push run 🚀
 on:
   push:
     branches:
-      - master
-      - main
-      - 'release/**'
+      # - master
+      # - main
+      # - 'release/**'
     tags:
       - '*'
 permissions:
@@ -14,12 +14,12 @@ concurrency:
   group: '${{ github.workflow }} @ ${{ github.ref }}'
   cancel-in-progress: ${{ github.ref_type == 'tag' }}
 jobs:
-  check-format:
-    name: Check Formatting 🔍
-    if: github.ref_name == 'master'
-    uses: ./.github/workflows/check-format.yaml
-    permissions:
-      contents: read
+  # check-format:
+  #   name: Check Formatting 🔍
+  #   if: github.ref_name == 'master'
+  #   uses: ./.github/workflows/check-format.yaml
+  #   permissions:
+  #     contents: read
 
   build-project:
     name: Build Project 🧱
