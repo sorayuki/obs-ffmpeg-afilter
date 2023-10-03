@@ -141,10 +141,8 @@ public:
 		UnitsPtr units;
 	};
 
-	void AddToProperties(obs_properties *props, obs_data *settings,
-			     const obs_audio_info &oai) const;
-	AVDictionary *LoadOBSSettings(AVFilterContext *filterCtx,
-				      obs_data *settings) const;
+	void AddToProperties(obs_properties *props, obs_data *settings, const obs_audio_info &oai) const;
+	AVDictionary *LoadOBSSettings(AVFilterContext *filterCtx, obs_data *settings) const;
 
 private:
 	FFAFilterOpts() {}
@@ -171,8 +169,7 @@ public:
 	bool initFilter(obs_data *settings, const obs_audio_info *oai);
 
 	obs_audio_data *
-	filterAudio(obs_audio_data *audio,
-		    array<vector<float>, MAX_AV_PLANES> &frame_datas, bool end);
+	filterAudio(obs_audio_data *audio, array<vector<float>, MAX_AV_PLANES> &frame_datas, bool end);
 };
 
 class auto_adapt_string {
@@ -222,6 +219,12 @@ AVChannelLayout speaker_layout_to_av_ch_layout(speaker_layout x)
 	}
 }
 
+std::string to_string(const AVChannelLayout& chLayout) {
+	char str[64] = {0};
+	av_channel_layout_describe(&chLayout, str, sizeof(str));
+	return str;
+}
+
 speaker_layout av_ch_layout_to_speaker_layout(int x)
 {
 	switch (x) {
@@ -245,13 +248,15 @@ speaker_layout av_ch_layout_to_speaker_layout(int x)
 }
 
 class FFAFilter : public IAudioFilter<FFAFilter> {
-	static bool obs_properties_add_avfilter(obs_properties *props,
-						obs_data *settings,
-						const obs_audio_info &oai,
-						const AVFilter *filter);
+	static bool obs_properties_add_avfilter(
+		obs_properties *props,
+		obs_data *settings,
+		const obs_audio_info &oai,
+		const AVFilter *filter);
 
-	static bool obs_properties_hide_other_avclass(obs_properties *props,
-						      const AVFilter *filter);
+	static bool obs_properties_hide_other_avclass(
+		obs_properties *props,
+		const AVFilter *filter);
 
 	mutex graph_mutex_;
 	unique_ptr<FilterGraph> filter_graph_;
@@ -362,10 +367,10 @@ bool FFAFilterOpts::Load(const AVFilter *filter)
 	if (!filter)
 		return false;
 
-	auto opts = filter->priv_class ? filter->priv_class->option
-						 ? filter->priv_class->option
-						 : nullptr
-				       : nullptr;
+	const AVOption* opts = nullptr;
+	if (filter->priv_class && filter->priv_class->option)
+		opts = filter->priv_class->option;
+
 	if (!opts)
 		return true;
 
@@ -402,6 +407,7 @@ bool FFAFilterOpts::Load(const AVFilter *filter)
 			get_units(opt.unit)->emplace_back(UnitDef{
 				opt.name, opt.default_val.i64, opt.help});
 		}
+
 		// for options
 		else {
 			opts_.push_back({});
@@ -438,14 +444,11 @@ static bool obs_property_set_visible(obs_properties *props,
 void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 				    const obs_audio_info &oai) const
 {
-	auto obs_properties_add_int_unit = [&](obs_properties *props,
-					       const Opt &opt,
-					       const string &optname) {
+	auto obs_properties_add_int_unit = [&](obs_properties *props, const Opt &opt, const string &optname) {
 		auto unit = opt.units;
-		auto prop = obs_properties_add_list(
-			props, optname.c_str(), opt.name,
-			obs_combo_type::OBS_COMBO_TYPE_LIST,
-			obs_combo_format::OBS_COMBO_FORMAT_INT);
+		auto prop = obs_properties_add_list(props, optname.c_str(), opt.name,
+			obs_combo_type::OBS_COMBO_TYPE_LIST, obs_combo_format::OBS_COMBO_FORMAT_INT);
+		
 		for (auto x : *unit) {
 			string itemstr;
 			itemstr += x.name;
@@ -494,14 +497,14 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 		auto prop = obs_properties_add_list(
 			props, optname.c_str(), opt.name,
 			obs_combo_type::OBS_COMBO_TYPE_LIST,
-			obs_combo_format::OBS_COMBO_FORMAT_INT);
-		obs_property_list_add_int(prop, "Mono", AV_CH_LAYOUT_MONO);
-		obs_property_list_add_int(prop, "Stereo", AV_CH_LAYOUT_STEREO);
-		obs_property_list_add_int(prop, "2.1", AV_CH_LAYOUT_2POINT1);
-		obs_property_list_add_int(prop, "4.0", AV_CH_LAYOUT_4POINT0);
-		obs_property_list_add_int(prop, "4.1", AV_CH_LAYOUT_4POINT1);
-		obs_property_list_add_int(prop, "5.1", AV_CH_LAYOUT_5POINT1);
-		obs_property_list_add_int(prop, "7.1", AV_CH_LAYOUT_7POINT1);
+			obs_combo_format::OBS_COMBO_FORMAT_STRING);
+		obs_property_list_add_string(prop, "Mono", to_string(AV_CHANNEL_LAYOUT_MONO).c_str());
+		obs_property_list_add_string(prop, "Stereo", to_string(AV_CH_LAYOUT_STEREO).c_str());
+		obs_property_list_add_string(prop, "2.1", to_string(AV_CH_LAYOUT_2POINT1).c_str());
+		obs_property_list_add_string(prop, "4.0", to_string(AV_CH_LAYOUT_4POINT0).c_str());
+		obs_property_list_add_string(prop, "4.1", to_string(AV_CH_LAYOUT_4POINT1).c_str());
+		obs_property_list_add_string(prop, "5.1", to_string(AV_CH_LAYOUT_5POINT1).c_str());
+		obs_property_list_add_string(prop, "7.1", to_string(AV_CH_LAYOUT_7POINT1).c_str());
 	};
 
 	auto obs_properties_add_regular_type = [&](const Opt &opt,
@@ -542,11 +545,9 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 						       opt.name);
 			obs_data_set_default_bool(settings, optname,
 						  opt.default_val.i64);
-		} else if (opt.type == AV_OPT_TYPE_CHANNEL_LAYOUT) {
+		} else if (opt.type == AV_OPT_TYPE_CHLAYOUT) {
 			obs_property_list_add_chlayout(opt, optname);
-			obs_data_set_default_int(
-				settings, optname,
-				speaker_layout_to_av_ch_layout(oai.speakers).u.mask);
+			obs_data_set_default_string(settings, optname, to_string(speaker_layout_to_av_ch_layout(oai.speakers)).c_str());
 		} else {
 			blog(LOG_WARNING, TAG "unsupport type %d for %s",
 			     opt.type, optname);
@@ -679,18 +680,16 @@ bool FilterGraph::initFilter(obs_data *settings, const obs_audio_info *oai)
 	// ====== init input buffer
 	input_buffer_filter = avfilter_graph_alloc_filter(
 		graph, avfilter_get_by_name("abuffer"), "src");
-	char ch_layout[64];
-	auto chl = speaker_layout_to_av_ch_layout(oai->speakers);
-	av_channel_layout_describe(&chl, ch_layout, sizeof(ch_layout));
-	av_opt_set(input_buffer_filter, "channel_layout", ch_layout,
-		   AV_OPT_SEARCH_CHILDREN);
+	av_opt_set(input_buffer_filter, "channel_layout", 
+		to_string(speaker_layout_to_av_ch_layout(oai->speakers)).c_str(),
+		AV_OPT_SEARCH_CHILDREN);
 	av_opt_set(input_buffer_filter, "sample_fmt",
-		   av_get_sample_fmt_name(AV_SAMPLE_FMT_FLTP),
-		   AV_OPT_SEARCH_CHILDREN);
+		av_get_sample_fmt_name(AV_SAMPLE_FMT_FLTP),
+		AV_OPT_SEARCH_CHILDREN);
 	av_opt_set_q(input_buffer_filter, "time_base",
-		     AVRational{1, 1000000000}, AV_OPT_SEARCH_CHILDREN);
+		AVRational{1, 1000000000}, AV_OPT_SEARCH_CHILDREN);
 	av_opt_set_int(input_buffer_filter, "sample_rate", oai->samples_per_sec,
-		       AV_OPT_SEARCH_CHILDREN);
+		AV_OPT_SEARCH_CHILDREN);
 	if (avfilter_init_str(input_buffer_filter, nullptr) < 0) {
 		blog(LOG_WARNING, TAG "fail to apply options for inputbuffer");
 		return on_failed();
@@ -699,10 +698,8 @@ bool FilterGraph::initFilter(obs_data *settings, const obs_audio_info *oai)
 	// ====== init output buffer
 	output_buffer_filter = avfilter_graph_alloc_filter(
 		graph, avfilter_get_by_name("abuffersink"), "sink");
-	auto chLayout = speaker_layout_to_av_ch_layout(oai->speakers);
-	char channelLayoutStr[64] = {0};
-	av_channel_layout_describe(&chLayout, channelLayoutStr, sizeof(channelLayoutStr));
-	av_opt_set(output_buffer_filter, "ch_layouts", channelLayoutStr,
+	av_opt_set(output_buffer_filter, "ch_layouts", 
+		to_string(speaker_layout_to_av_ch_layout(oai->speakers)).c_str(),
 		AV_OPT_SEARCH_CHILDREN);
 	int sample_fmts[] = {AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE};
 	av_opt_set_int_list(output_buffer_filter, "sample_fmts", sample_fmts,
