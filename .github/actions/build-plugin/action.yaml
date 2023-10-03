@@ -23,48 +23,48 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Run macOS Build
-      if: runner.os == 'macOS'
-      shell: zsh --no-rcs --errexit --pipefail {0}
-      working-directory: ${{ inputs.workingDirectory }}
-      env:
-        CODESIGN_IDENT: ${{ inputs.codesignIdent }}
-        CODESIGN_TEAM: ${{ inputs.codesignTeam }}
-      run: |
-        : Run macOS Build
+#    - name: Run macOS Build
+#      if: runner.os == 'macOS'
+#      shell: zsh --no-rcs --errexit --pipefail {0}
+#      working-directory: ${{ inputs.workingDirectory }}
+#      env:
+#        CODESIGN_IDENT: ${{ inputs.codesignIdent }}
+#        CODESIGN_TEAM: ${{ inputs.codesignTeam }}
+#      run: |
+#        : Run macOS Build
+#
+#        local -a build_args=(--config ${{ inputs.config }})
+#        if (( ${+RUNNER_DEBUG} )) build_args+=(--debug)
+#
+#        if [[ '${{ inputs.codesign }}' == 'true' ]] build_args+=(--codesign)
+#
+#        .github/scripts/build-macos ${build_args}
 
-        local -a build_args=(--config ${{ inputs.config }})
-        if (( ${+RUNNER_DEBUG} )) build_args+=(--debug)
+#    - name: Install Dependencies 🛍️
+#      if: runner.os == 'Linux'
+#      shell: bash
+#      run: |
+#        : Install Dependencies 🛍️
+#        echo ::group::Install Dependencies
+#        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+#        echo "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
+#        brew install --quiet zsh
+#        echo ::endgroup::
 
-        if [[ '${{ inputs.codesign }}' == 'true' ]] build_args+=(--codesign)
-
-        .github/scripts/build-macos ${build_args}
-
-    - name: Install Dependencies 🛍️
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        : Install Dependencies 🛍️
-        echo ::group::Install Dependencies
-        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        echo "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
-        brew install --quiet zsh
-        echo ::endgroup::
-
-    - name: Run Ubuntu Build
-      if: runner.os == 'Linux'
-      shell: zsh --no-rcs --errexit --pipefail {0}
-      working-directory: ${{ inputs.workingDirectory }}
-      run: |
-        : Run Ubuntu Build
-
-        local -a build_args=(
-          --target linux-${{ inputs.target }}
-          --config ${{ inputs.config }}
-        )
-        if (( ${+RUNNER_DEBUG} )) build_args+=(--debug)
-
-        .github/scripts/build-linux ${build_args}
+#    - name: Run Ubuntu Build
+#      if: runner.os == 'Linux'
+#      shell: zsh --no-rcs --errexit --pipefail {0}
+#      working-directory: ${{ inputs.workingDirectory }}
+#      run: |
+#        : Run Ubuntu Build
+#
+#        local -a build_args=(
+#          --target linux-${{ inputs.target }}
+#          --config ${{ inputs.config }}
+#        )
+#        if (( ${+RUNNER_DEBUG} )) build_args+=(--debug)
+#
+#        .github/scripts/build-linux ${build_args}
 
     - name: Run Windows Build
       if: runner.os == 'Windows'

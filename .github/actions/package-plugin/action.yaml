@@ -47,54 +47,54 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Run macOS Packaging
-      if: runner.os == 'macOS'
-      shell: zsh --no-rcs --errexit --pipefail {0}
-      working-directory: ${{ inputs.workingDirectory }}
-      env:
-        CODESIGN_IDENT: ${{ inputs.codesignIdent }}
-        CODESIGN_IDENT_INSTALLER: ${{ inputs.installerIdent }}
-        CODESIGN_TEAM: ${{ inputs.codesignTeam }}
-        CODESIGN_IDENT_USER: ${{ inputs.codesignUser }}
-        CODESIGN_IDENT_PASS: ${{ inputs.codesignPass }}
-      run: |
-        : Run macOS Packaging
-
-        local -a package_args=(--config ${{ inputs.config }})
-        if (( ${+RUNNER_DEBUG} )) package_args+=(--debug)
-
-        if [[ '${{ inputs.codesign }}' == 'true' ]] package_args+=(--codesign)
-        if [[ '${{ inputs.notarize }}' == 'true' ]] package_args+=(--notarize)
-        if [[ '${{ inputs.package }}' == 'true' ]] package_args+=(--package)
-
-        .github/scripts/package-macos ${package_args}
-
-    - name: Install Dependencies 🛍️
-      if: runner.os == 'Linux'
-      shell: bash
-      run: |
-        : Install Dependencies 🛍️
-        echo ::group::Install Dependencies
-        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        echo "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
-        brew install --quiet zsh
-        echo ::endgroup::
-
-    - name: Run Ubuntu Packaging
-      if: runner.os == 'Linux'
-      shell: zsh --no-rcs --errexit --pipefail {0}
-      working-directory: ${{ inputs.workingDirectory }}
-      run: |
-        : Run Ubuntu Packaging
-        package_args=(
-          --target linux-${{ inputs.target }}
-          --config ${{ inputs.config }}
-        )
-        if (( ${+RUNNER_DEBUG} )) build_args+=(--debug)
-
-        if [[ '${{ inputs.package }}' == 'true' ]] package_args+=(--package)
-
-        .github/scripts/package-linux ${package_args}
+#    - name: Run macOS Packaging
+#      if: runner.os == 'macOS'
+#      shell: zsh --no-rcs --errexit --pipefail {0}
+#      working-directory: ${{ inputs.workingDirectory }}
+#      env:
+#        CODESIGN_IDENT: ${{ inputs.codesignIdent }}
+#        CODESIGN_IDENT_INSTALLER: ${{ inputs.installerIdent }}
+#        CODESIGN_TEAM: ${{ inputs.codesignTeam }}
+#        CODESIGN_IDENT_USER: ${{ inputs.codesignUser }}
+#        CODESIGN_IDENT_PASS: ${{ inputs.codesignPass }}
+#      run: |
+#        : Run macOS Packaging
+#
+#        local -a package_args=(--config ${{ inputs.config }})
+#        if (( ${+RUNNER_DEBUG} )) package_args+=(--debug)
+#
+#        if [[ '${{ inputs.codesign }}' == 'true' ]] package_args+=(--codesign)
+#        if [[ '${{ inputs.notarize }}' == 'true' ]] package_args+=(--notarize)
+#        if [[ '${{ inputs.package }}' == 'true' ]] package_args+=(--package)
+#
+#        .github/scripts/package-macos ${package_args}
+#
+#    - name: Install Dependencies 🛍️
+#      if: runner.os == 'Linux'
+#      shell: bash
+#      run: |
+#        : Install Dependencies 🛍️
+#        echo ::group::Install Dependencies
+#        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+#        echo "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
+#        brew install --quiet zsh
+#        echo ::endgroup::
+#
+#    - name: Run Ubuntu Packaging
+#      if: runner.os == 'Linux'
+#      shell: zsh --no-rcs --errexit --pipefail {0}
+#      working-directory: ${{ inputs.workingDirectory }}
+#      run: |
+#        : Run Ubuntu Packaging
+#        package_args=(
+#          --target linux-${{ inputs.target }}
+#          --config ${{ inputs.config }}
+#        )
+#        if (( ${+RUNNER_DEBUG} )) build_args+=(--debug)
+#
+#        if [[ '${{ inputs.package }}' == 'true' ]] package_args+=(--package)
+#
+#        .github/scripts/package-linux ${package_args}
 
     - name: Run Windows Packaging
       if: runner.os == 'Windows'
