@@ -198,24 +198,24 @@ public:
 	operator const char *() const { return buf_.c_str(); };
 };
 
-int64_t speaker_layout_to_av_ch_layout(speaker_layout x)
+AVChannelLayout speaker_layout_to_av_ch_layout(speaker_layout x)
 {
 	switch (x) {
 	case speaker_layout::SPEAKERS_MONO:
-		return AV_CH_LAYOUT_MONO;
+		return AV_CHANNEL_LAYOUT_MONO;
 	case speaker_layout::SPEAKERS_UNKNOWN:
 	case speaker_layout::SPEAKERS_STEREO:
-		return AV_CH_LAYOUT_STEREO;
+		return AV_CHANNEL_LAYOUT_STEREO;
 	case speaker_layout::SPEAKERS_2POINT1:
-		return AV_CH_LAYOUT_2POINT1;
+		return AV_CHANNEL_LAYOUT_2POINT1;
 	case speaker_layout::SPEAKERS_4POINT0:
-		return AV_CH_LAYOUT_4POINT0;
+		return AV_CHANNEL_LAYOUT_4POINT0;
 	case speaker_layout::SPEAKERS_4POINT1:
-		return AV_CH_LAYOUT_4POINT1;
+		return AV_CHANNEL_LAYOUT_4POINT1;
 	case speaker_layout::SPEAKERS_5POINT1:
-		return AV_CH_LAYOUT_5POINT1;
+		return AV_CHANNEL_LAYOUT_5POINT1;
 	case speaker_layout::SPEAKERS_7POINT1:
-		return AV_CH_LAYOUT_7POINT1;
+		return AV_CHANNEL_LAYOUT_7POINT1;
 	default:
 		return speaker_layout_to_av_ch_layout(
 			speaker_layout::SPEAKERS_UNKNOWN);
@@ -297,9 +297,9 @@ bool FFAFilterCollection::Init()
 		if (g_filter_black_list_.find(flt->name) !=
 		    g_filter_black_list_.end())
 			continue;
-		if (avfilter_pad_count(flt->inputs) != 1)
+		if (avfilter_filter_pad_count(flt, true) != 1)
 			continue;
-		if (avfilter_pad_count(flt->outputs) != 1)
+		if (avfilter_filter_pad_count(flt, false) != 1)
 			continue;
 		auto inpad_type = avfilter_pad_get_type(flt->inputs, 0);
 		if (!(inpad_type & AVMediaType::AVMEDIA_TYPE_AUDIO))
@@ -546,7 +546,7 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 			obs_property_list_add_chlayout(opt, optname);
 			obs_data_set_default_int(
 				settings, optname,
-				speaker_layout_to_av_ch_layout(oai.speakers));
+				speaker_layout_to_av_ch_layout(oai.speakers).u.mask);
 		} else {
 			blog(LOG_WARNING, TAG "unsupport type %d for %s",
 			     opt.type, optname);
@@ -680,9 +680,8 @@ bool FilterGraph::initFilter(obs_data *settings, const obs_audio_info *oai)
 	input_buffer_filter = avfilter_graph_alloc_filter(
 		graph, avfilter_get_by_name("abuffer"), "src");
 	char ch_layout[64];
-	av_get_channel_layout_string(
-		ch_layout, sizeof(ch_layout), 0,
-		speaker_layout_to_av_ch_layout(oai->speakers));
+	auto chl = speaker_layout_to_av_ch_layout(oai->speakers);
+	av_channel_layout_describe(&chl, ch_layout, sizeof(ch_layout));
 	av_opt_set(input_buffer_filter, "channel_layout", ch_layout,
 		   AV_OPT_SEARCH_CHILDREN);
 	av_opt_set(input_buffer_filter, "sample_fmt",
@@ -700,10 +699,11 @@ bool FilterGraph::initFilter(obs_data *settings, const obs_audio_info *oai)
 	// ====== init output buffer
 	output_buffer_filter = avfilter_graph_alloc_filter(
 		graph, avfilter_get_by_name("abuffersink"), "sink");
-	int64_t channel_layouts[] = {
-		speaker_layout_to_av_ch_layout(oai->speakers), -1};
-	av_opt_set_int_list(output_buffer_filter, "channel_layouts",
-			    channel_layouts, -1, AV_OPT_SEARCH_CHILDREN);
+	auto chLayout = speaker_layout_to_av_ch_layout(oai->speakers);
+	char channelLayoutStr[64] = {0};
+	av_channel_layout_describe(&chLayout, channelLayoutStr, sizeof(channelLayoutStr));
+	av_opt_set(output_buffer_filter, "ch_layouts", channelLayoutStr,
+		AV_OPT_SEARCH_CHILDREN);
 	int sample_fmts[] = {AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE};
 	av_opt_set_int_list(output_buffer_filter, "sample_fmts", sample_fmts,
 			    AV_SAMPLE_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
@@ -778,12 +778,11 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 	fin = av_frame_alloc();
 	fin->sample_rate = oai_.samples_per_sec;
 	fin->format = AV_SAMPLE_FMT_FLTP;
-	fin->channel_layout = speaker_layout_to_av_ch_layout(oai_.speakers);
+	fin->ch_layout = speaker_layout_to_av_ch_layout(oai_.speakers);
 	fin->nb_samples = audio->frames;
 	fin->pts = audio->timestamp;
 	fin->linesize[0] = audio->frames * sizeof(float);
-	fin->channels = av_get_channel_layout_nb_channels(fin->channel_layout);
-	for (int i = 0; i < fin->channels; ++i)
+	for (int i = 0; i < fin->ch_layout.nb_channels; ++i)
 		fin->data[i] = audio->data[i];
 
 	int inerr = av_buffersrc_add_frame_flags(inputFilter_, fin, 0);
@@ -802,7 +801,7 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 	else if (outerr < 0)
 		return result(audio);
 
-	for (int i = 0; i < fout->channels; ++i) {
+	for (int i = 0; i < fout->ch_layout.nb_channels; ++i) {
 		frame_datas[i].resize(fout->nb_samples);
 		copy_n((float *)fout->extended_data[i], fout->nb_samples,
 		       frame_datas[i].data());
