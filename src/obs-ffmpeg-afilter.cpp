@@ -11,6 +11,7 @@
 #include <memory>
 #include <numeric>
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 
 extern "C" {
@@ -763,8 +764,8 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 {
 	AVFrame *fin = nullptr, *fout = nullptr;
 	auto result = [&](obs_audio_data *audio) {
-		av_frame_unref(fin);
-		av_frame_unref(fout);
+		av_frame_free(&fin);
+		av_frame_free(&fout);
 		return audio;
 	};
 
@@ -773,6 +774,8 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 
 	// ====== feed data into graph
 	fin = av_frame_alloc();
+	if (!fin)
+		return result(audio);
 	fin->sample_rate = oai_.samples_per_sec;
 	fin->format = AV_SAMPLE_FMT_FLTP;
 	fin->ch_layout = speaker_layout_to_av_ch_layout(oai_.speakers);
@@ -790,6 +793,8 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 
 	// ====== retrieve data from graph
 	fout = av_frame_alloc();
+	if (!fout)
+		return result(audio);
 	int outerr = av_buffersink_get_frame(outputFilter_, fout);
 	if (outerr == AVERROR(EAGAIN))
 		return result(nullptr);
@@ -798,7 +803,43 @@ FilterGraph::filterAudio(obs_audio_data *audio,
 	else if (outerr < 0)
 		return result(audio);
 
-	for (int i = 0; i < fout->ch_layout.nb_channels; ++i) {
+	const int channels = fout->ch_layout.nb_channels;
+	const int expected_channels =
+		speaker_layout_to_av_ch_layout(oai_.speakers).nb_channels;
+	if (fout->format != AV_SAMPLE_FMT_FLTP || fout->nb_samples <= 0 ||
+	    channels <= 0 || channels != expected_channels ||
+	    channels > MAX_AV_PLANES ||
+	    !fout->extended_data) {
+		blog(LOG_WARNING,
+		     TAG "invalid output frame: format=%d, channels=%d, samples=%d",
+		     fout->format, channels, fout->nb_samples);
+		return result(audio);
+	}
+
+	const size_t plane_size =
+		static_cast<size_t>(fout->nb_samples) * sizeof(float);
+	for (int i = 0; i < channels; ++i) {
+		const uint8_t *plane_data = fout->extended_data[i];
+		AVBufferRef *plane_buffer = av_frame_get_plane_buffer(fout, i);
+		if (!plane_data || !plane_buffer || !plane_buffer->data) {
+			blog(LOG_WARNING, TAG "missing output buffer for plane %d", i);
+			return result(audio);
+		}
+
+		const uintptr_t buffer_start =
+			reinterpret_cast<uintptr_t>(plane_buffer->data);
+		const uintptr_t data_start = reinterpret_cast<uintptr_t>(plane_data);
+		if (data_start < buffer_start ||
+		    data_start - buffer_start > plane_buffer->size ||
+		    plane_size > plane_buffer->size - (data_start - buffer_start)) {
+			blog(LOG_WARNING,
+			     TAG "output plane %d is smaller than %zu bytes", i,
+			     plane_size);
+			return result(audio);
+		}
+	}
+
+	for (int i = 0; i < channels; ++i) {
 		frame_datas[i].resize(fout->nb_samples);
 		copy_n((float *)fout->extended_data[i], fout->nb_samples,
 		       frame_datas[i].data());
