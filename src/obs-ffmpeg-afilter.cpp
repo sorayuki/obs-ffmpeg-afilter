@@ -1,3 +1,7 @@
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "obs.h"
 #include "obs-module.h"
 
@@ -13,6 +17,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <cmath>
+#include <cstring>
 
 extern "C" {
 #include "libavfilter/avfilter.h"
@@ -39,6 +45,190 @@ set<string> g_filter_black_list_{
 	"abench",     "afade",         "afifo",         "aloop",
 	"ametadata",  "aperms",        "areverse",      "anull",
 	"replaygain", "silencedetect", "silenceremove", "volumedetect"};
+
+static bool is_default_value(obs_data_t *data, const char *name)
+{
+	obs_data_item_t *item = obs_data_item_byname(data, name);
+	if (!item)
+		return true;
+
+	bool is_default = false;
+	if (!obs_data_item_has_user_value(item)) {
+		is_default = true;
+	} else if (obs_data_item_has_default_value(item)) {
+		switch (obs_data_item_gettype(item)) {
+		case OBS_DATA_STRING: {
+			const char *val = obs_data_item_get_string(item);
+			const char *def =
+				obs_data_item_get_default_string(item);
+			is_default = val && def && strcmp(val, def) == 0;
+			break;
+		}
+		case OBS_DATA_NUMBER:
+			if (obs_data_item_numtype(item) == OBS_DATA_NUM_INT)
+				is_default = obs_data_item_get_int(item) ==
+					     obs_data_item_get_default_int(item);
+			else
+				is_default = obs_data_item_get_double(item) ==
+					     obs_data_item_get_default_double(item);
+			break;
+		case OBS_DATA_BOOLEAN:
+			is_default = obs_data_item_get_bool(item) ==
+				     obs_data_item_get_default_bool(item);
+			break;
+		default:
+			is_default = false;
+			break;
+		}
+	}
+
+	obs_data_item_release(&item);
+	return is_default;
+}
+
+static void copy_data_item(obs_data_t *dst, obs_data_t *src, const char *name)
+{
+	obs_data_item_t *item = obs_data_item_byname(src, name);
+	if (!item)
+		return;
+
+	switch (obs_data_item_gettype(item)) {
+	case OBS_DATA_STRING:
+		obs_data_set_string(dst, name, obs_data_item_get_string(item));
+		break;
+	case OBS_DATA_NUMBER:
+		if (obs_data_item_numtype(item) == OBS_DATA_NUM_INT)
+			obs_data_set_int(dst, name,
+					 obs_data_item_get_int(item));
+		else
+			obs_data_set_double(dst, name,
+					    obs_data_item_get_double(item));
+		break;
+	case OBS_DATA_BOOLEAN:
+		obs_data_set_bool(dst, name, obs_data_item_get_bool(item));
+		break;
+	case OBS_DATA_OBJECT: {
+		obs_data_t *obj = obs_data_item_get_obj(item);
+		obs_data_set_obj(dst, name, obj);
+		obs_data_release(obj);
+		break;
+	}
+	case OBS_DATA_ARRAY: {
+		obs_data_array_t *arr = obs_data_item_get_array(item);
+		obs_data_set_array(dst, name, arr);
+		obs_data_array_release(arr);
+		break;
+	}
+	default:
+		break;
+	}
+
+	obs_data_item_release(&item);
+}
+
+// Pick a step small enough for the spinbox to expose the decimals the option
+// range needs (e.g. 0.00001 for anlmdn's strength), instead of a fixed 0.1.
+static double choose_float_step(double min, double max, double default_val)
+{
+	auto decimals_of = [](double v) {
+		v = fabs(v);
+		if (v == 0.0)
+			return 0;
+		for (int d = 0; d <= 6; ++d) {
+			if (fabs(v - round(v)) < 1e-9 * (std::max)(1.0, v))
+				return d;
+			v *= 10.0;
+		}
+		return 6;
+	};
+
+	int decimals = (std::max)({decimals_of(min), decimals_of(max),
+				   decimals_of(default_val)});
+	decimals = (std::min)(decimals, 6);
+	return pow(10.0, -decimals);
+}
+
+#if defined(_WIN32)
+
+static bool set_clipboard_text(const std::string &text)
+{
+	if (!OpenClipboard(nullptr))
+		return false;
+
+	EmptyClipboard();
+
+	bool ok = false;
+	int wlen = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr,
+				       0);
+	if (wlen > 0) {
+		HANDLE mem = GlobalAlloc(
+			GMEM_MOVEABLE,
+			static_cast<SIZE_T>(wlen) * sizeof(wchar_t));
+		if (mem) {
+			wchar_t *dst =
+				static_cast<wchar_t *>(GlobalLock(mem));
+			if (dst) {
+				MultiByteToWideChar(CP_UTF8, 0, text.c_str(),
+						    -1, dst, wlen);
+				GlobalUnlock(mem);
+				ok = SetClipboardData(CF_UNICODETEXT, mem) !=
+				     nullptr;
+			}
+			if (!ok)
+				GlobalFree(mem);
+		}
+	}
+
+	CloseClipboard();
+	return ok;
+}
+
+static std::string get_clipboard_text()
+{
+	std::string result;
+
+	if (!IsClipboardFormatAvailable(CF_UNICODETEXT) ||
+	    !OpenClipboard(nullptr))
+		return result;
+
+	HANDLE mem = GetClipboardData(CF_UNICODETEXT);
+	if (mem) {
+		const wchar_t *src =
+			static_cast<const wchar_t *>(GlobalLock(mem));
+		if (src) {
+			int len = WideCharToMultiByte(CP_UTF8, 0, src, -1,
+						      nullptr, 0, nullptr,
+						      nullptr);
+			if (len > 1) {
+				std::vector<char> buf(len);
+				WideCharToMultiByte(CP_UTF8, 0, src, -1,
+						    buf.data(), len, nullptr,
+						    nullptr);
+				result.assign(buf.data(), len - 1);
+			}
+			GlobalUnlock(mem);
+		}
+	}
+
+	CloseClipboard();
+	return result;
+}
+
+#else
+
+static bool set_clipboard_text(const std::string &)
+{
+	blog(LOG_WARNING, TAG "clipboard is not supported on this platform");
+	return false;
+}
+
+static std::string get_clipboard_text()
+{
+	blog(LOG_WARNING, TAG "clipboard is not supported on this platform");
+	return {};
+}
+
+#endif
 
 template<class T> class IAudioFilter {
 protected:
@@ -135,8 +325,8 @@ public:
 	struct Opt {
 		const char *name;
 		const char *help;
-		int max;
-		int min;
+		double max;
+		double min;
 		int type;
 		decltype(AVOption::default_val) default_val;
 		UnitsPtr units;
@@ -265,6 +455,7 @@ class FFAFilter : public IAudioFilter<FFAFilter> {
 	string current_filter_name_;
 	array<vector<float>, MAX_AV_PLANES> last_audio_data_bufs_;
 	obs_audio_data last_audio_data_;
+	obs_source_t *source_ = nullptr;
 
 public:
 	FFAFilter(obs_data_t *settings, obs_source_t *filter);
@@ -280,6 +471,13 @@ public:
 	void update(obs_data_t *s);
 	obs_audio_data *filterAudio(obs_audio_data *audio);
 	obs_properties_t *properties();
+
+	static bool ExportToClipboardClicked(obs_properties_t *props,
+					     obs_property_t *property,
+					     void *data);
+	static bool ImportFromClipboardClicked(obs_properties_t *props,
+					       obs_property_t *property,
+					       void *data);
 };
 
 FFAFilterCollection &FFAFilterCollection::Get()
@@ -518,20 +716,26 @@ void FFAFilterOpts::AddToProperties(obs_properties *props, obs_data *settings,
 		if (opt.type == AV_OPT_TYPE_FLOAT ||
 		    opt.type == AV_OPT_TYPE_DOUBLE ||
 		    opt.type == AV_OPT_TYPE_DURATION) {
+			double defval =
+				opt.type == AV_OPT_TYPE_DURATION
+					? static_cast<double>(opt.default_val.i64)
+					: opt.default_val.dbl;
+			double step =
+				choose_float_step(opt.min, opt.max, defval);
 			prop = obs_properties_add_float(props, optname,
 							opt.name, opt.min,
-							opt.max, 0.1);
-			obs_data_set_default_double(settings, optname,
-						    opt.default_val.dbl);
+							opt.max, step);
+			obs_data_set_default_double(settings, optname, defval);
 		} else if (opt.type == AV_OPT_TYPE_INT ||
 			   opt.type == AV_OPT_TYPE_INT64) {
 			if (opt.units) {
 				obs_properties_add_int_unit(props, opt,
 							    optname);
 			} else {
-				prop = obs_properties_add_int(props, optname,
-							      opt.name, opt.min,
-							      opt.max, 1);
+				prop = obs_properties_add_int(
+					props, optname, opt.name,
+					static_cast<int>(opt.min),
+					static_cast<int>(opt.max), 1);
 			}
 			obs_data_set_default_int(settings, optname,
 						 opt.default_val.i64);
@@ -889,6 +1093,7 @@ bool FFAFilter::obs_properties_hide_other_avclass(obs_properties *props,
 }
 
 FFAFilter::FFAFilter(obs_data_t *settings, obs_source_t *filter)
+	: source_(filter)
 {
 	update(settings);
 }
@@ -928,6 +1133,13 @@ obs_properties_t *FFAFilter::properties()
 	auto props = obs_properties_create();
 	obs_properties_set_param(props, this, nullptr);
 
+	obs_properties_add_button2(props, "export_clipboard",
+				   "Export to clipboard",
+				   ExportToClipboardClicked, this);
+	obs_properties_add_button2(props, "import_clipboard",
+				   "Import from clipboard",
+				   ImportFromClipboardClicked, this);
+
 	auto filterlist = obs_properties_add_list(
 		props, "filter_name", obs_module_text("Filter"),
 		obs_combo_type::OBS_COMBO_TYPE_LIST,
@@ -965,6 +1177,85 @@ obs_properties_t *FFAFilter::properties()
 
 	obs_property_set_modified_callback(filterlist, callback);
 	return props;
+}
+
+bool FFAFilter::ExportToClipboardClicked(obs_properties_t *props,
+					 obs_property_t *,
+					 void *data)
+{
+	auto *thiz = static_cast<FFAFilter *>(data);
+	obs_source_t *source = thiz ? thiz->source_ : nullptr;
+	if (!source)
+		return false;
+
+	obs_data_t *settings = obs_source_get_settings(source);
+	if (!settings)
+		return false;
+
+	obs_data_t *exported = obs_data_create();
+	for (obs_property_t *p = obs_properties_first(props); p;
+	     obs_property_next(&p)) {
+		if (!obs_property_visible(p))
+			continue;
+		const char *name = obs_property_name(p);
+		if (!name || is_default_value(settings, name))
+			continue;
+		copy_data_item(exported, settings, name);
+	}
+
+	const char *json = obs_data_get_json_pretty(exported);
+	if (json && *json) {
+		if (set_clipboard_text(json))
+			blog(LOG_INFO, TAG "exported settings to clipboard");
+		else
+			blog(LOG_WARNING, TAG,
+			     "failed to copy settings to clipboard");
+	}
+
+	obs_data_release(exported);
+	obs_data_release(settings);
+	return false;
+}
+
+bool FFAFilter::ImportFromClipboardClicked(obs_properties_t *props,
+					   obs_property_t *,
+					   void *data)
+{
+	auto *thiz = static_cast<FFAFilter *>(data);
+	obs_source_t *source = thiz ? thiz->source_ : nullptr;
+	if (!source)
+		return false;
+
+	std::string json = get_clipboard_text();
+	if (json.empty()) {
+		blog(LOG_WARNING, TAG, "clipboard has no text to import");
+		return false;
+	}
+
+	obs_data_t *imported = obs_data_create_from_json(json.c_str());
+	if (!imported) {
+		blog(LOG_WARNING, TAG,
+		     "failed to parse settings from clipboard");
+		return false;
+	}
+
+	obs_data_t *settings = obs_source_get_settings(source);
+	if (!settings) {
+		obs_data_release(imported);
+		return false;
+	}
+
+	obs_data_apply(settings, imported);
+	blog(LOG_INFO, TAG, "imported settings from clipboard");
+
+	// The per-filter options are only built by the filter_name modified
+	// callback, so replay it to rebuild the option list for the imported
+	// filter before returning true to refresh the UI.
+	obs_properties_apply_settings(props, settings);
+
+	obs_data_release(settings);
+	obs_data_release(imported);
+	return true;
 }
 
 extern "C" {
