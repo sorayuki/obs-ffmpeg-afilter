@@ -699,15 +699,15 @@ bool FilterGraph::initFilter(obs_data *settings, const obs_audio_info *oai)
 	// ====== init output buffer
 	output_buffer_filter = avfilter_graph_alloc_filter(
 		graph, avfilter_get_by_name("abuffersink"), "sink");
-	av_opt_set(output_buffer_filter, "ch_layouts", 
+	av_opt_set(output_buffer_filter, "channel_layouts",
 		to_string(speaker_layout_to_av_ch_layout(oai->speakers)).c_str(),
 		AV_OPT_SEARCH_CHILDREN);
-	int sample_fmts[] = {AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE};
-	av_opt_set_int_list(output_buffer_filter, "sample_fmts", sample_fmts,
-			    AV_SAMPLE_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
-	int sample_rates[] = {oai->samples_per_sec, -1};
-	av_opt_set_int_list(output_buffer_filter, "sample_rates", sample_rates,
-			    -1, AV_OPT_SEARCH_CHILDREN);
+	av_opt_set(output_buffer_filter, "sample_formats",
+		av_get_sample_fmt_name(AV_SAMPLE_FMT_FLTP),
+		AV_OPT_SEARCH_CHILDREN);
+	av_opt_set(output_buffer_filter, "samplerates",
+		to_string(oai->samples_per_sec).c_str(),
+		AV_OPT_SEARCH_CHILDREN);
 	if (avfilter_init_str(output_buffer_filter, nullptr) < 0) {
 		blog(LOG_WARNING, TAG "fail to apply options for outputbuffer");
 		return on_failed();
@@ -987,8 +987,30 @@ bool obs_module_load()
 		return false;
 	}
 
-	auto log_callback = [](void *ud, int level, const char *fmt,
-			       va_list args) { blogva(LOG_INFO, fmt, args); };
+	auto log_callback = [](void *ud, int level, const char *fmt, va_list args) {
+		using namespace std::chrono;
+		static steady_clock::time_point log_window_start = steady_clock::now();
+		static int log_count = 0;
+		static std::mutex log_mutex;
+		static std::atomic_bool too_many_logs = false;
+		if (too_many_logs.load())
+			return;
+		blogva(LOG_WARNING, fmt, args);
+		if (++log_count > 100) {
+			if (log_mutex.try_lock()) {
+				auto now = steady_clock::now();
+				if (now - log_window_start < seconds(5)) { // output more than 100 lines of logs in 5 seconds
+					blog(LOG_WARNING, "%s", "[obs-ffmpeg-afilter] too many logs. stop record.");
+					too_many_logs.store(true);
+				} else {
+					log_window_start = now;
+					log_count = 0;
+				}
+				log_mutex.unlock();
+			}
+		}
+	};
+
 	av_log_set_callback(log_callback);
 
 	if (register_ffmepg_audio_filter())
