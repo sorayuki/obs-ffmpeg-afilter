@@ -1286,7 +1286,9 @@ bool obs_module_load()
 		static std::atomic_bool too_many_logs = false;
 		if (too_many_logs.load())
 			return;
-		blogva(LOG_WARNING, fmt, args);
+		if (level > AV_LOG_WARNING)
+			return;
+		blogva(level == AV_LOG_WARNING ? LOG_WARNING : LOG_ERROR, fmt, args);
 		if (++log_count > 100) {
 			if (log_mutex.try_lock()) {
 				auto now = steady_clock::now();
